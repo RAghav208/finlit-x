@@ -1,5 +1,9 @@
 export async function GET() {
-  return Response.json({ ok: true, time: Date.now() })
+  return Response.json({
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || 'MISSING',
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ? 'SET' : 'MISSING',
+    NODE_VERSION: process.version,
+  })
 }
 
 export async function POST(request) {
@@ -10,12 +14,6 @@ export async function POST(request) {
   if (!supabaseKey) return Response.json({ error: 'SUPABASE_SERVICE_ROLE_KEY missing' }, { status: 500 })
 
   const restUrl = supabaseUrl.replace(/\/$/, '') + '/rest/v1'
-  const headers = {
-    'apikey': supabaseKey,
-    'Authorization': `Bearer ${supabaseKey}`,
-    'Content-Type': 'application/json',
-    'Prefer': 'return=representation',
-  }
 
   let body
   try {
@@ -46,20 +44,45 @@ export async function POST(request) {
     study_group: 'experimental',
   }
 
-  const insertRes = await fetch(`${restUrl}/survey_responses`, {
+  // Test 1: Service role key in apikey + Authorization headers
+  const test1 = await fetch(`${restUrl}/survey_responses`, {
     method: 'POST',
-    headers,
+    headers: {
+      'apikey': supabaseKey,
+      'Authorization': `Bearer ${supabaseKey}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation',
+    },
     body: JSON.stringify(insertData),
   })
 
-  const responseText = await insertRes.text()
-  if (!insertRes.ok) {
-    return Response.json({
-      error: 'Failed to save survey response',
-      status: insertRes.status,
-      detail: responseText.slice(0, 300),
-    }, { status: 500 })
+  // Test 2: Anon key in apikey, service role in Authorization
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+  const test2 = anonKey ? await fetch(`${restUrl}/survey_responses`, {
+    method: 'POST',
+    headers: {
+      'apikey': anonKey,
+      'Authorization': `Bearer ${supabaseKey}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation',
+    },
+    body: JSON.stringify(insertData),
+  }) : null
+
+  const text1 = await test1.text()
+  const result1 = { status: test1.status, ok: test1.ok, preview: text1.slice(0, 200) }
+
+  let result2 = null
+  if (test2) {
+    const text2 = await test2.text()
+    result2 = { status: test2.status, ok: test2.ok, preview: text2.slice(0, 200) }
   }
 
-  return Response.json({ success: true, data: responseText.slice(0, 100) })
+  return Response.json({
+    restUrl: restUrl.slice(0, 50) + '...',
+    keyPrefix: supabaseKey.slice(0, 20) + '...',
+    test1: result1,
+    test2: result2,
+    usedAnonKey: !!anonKey,
+  })
 }
