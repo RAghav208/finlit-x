@@ -3,11 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 const CORRECT_ANSWERS = [2, 0, 1, 2, 1, 2, 2, 3, 1, 2, 1, 1, 2, 2, 1]
 
 export async function POST(request) {
-  console.log('[SURVEY_SUBMIT] Request received')
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  console.log('[SURVEY_SUBMIT] env vars:', { url: supabaseUrl ? 'SET' : 'MISSING', key: supabaseKey ? 'SET' : 'MISSING' })
 
   if (!supabaseUrl || !supabaseKey) {
     return Response.json({
@@ -19,19 +16,16 @@ export async function POST(request) {
     }, { status: 500 })
   }
 
-  let supabase
-  try {
-    supabase = createClient(supabaseUrl, supabaseKey)
-    console.log('[SURVEY_SUBMIT] Supabase client created successfully')
-  } catch (err) {
-    console.error('[SURVEY_SUBMIT] Supabase client creation failed:', err.message)
-    return Response.json({ error: 'Supabase client init failed', detail: err.message }, { status: 500 })
-  }
+  // Supabase-js internally encodes the key as base64 for the apikey header.
+  // Node.js 18+ Headers.set() rejects values containing chars outside the
+  // visible ASCII range, which is stricter than what the JWT actually needs.
+  // We use a URL-safe base64 encode to avoid any char-set issues.
+  const base64urlKey = supabaseKey.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  const supabase = createClient(supabaseUrl, base64urlKey)
 
   let body
   try {
     body = await request.json()
-    console.log('[SURVEY_SUBMIT] Body parsed, participantCode:', body?.participantCode)
   } catch {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
@@ -72,14 +66,11 @@ export async function POST(request) {
     study_group: 'experimental',
   }
 
-  console.log('[SURVEY_SUBMIT] Attempting insert with:', JSON.stringify(insertData))
   const { data, error } = await supabase
     .from('survey_responses')
     .insert(insertData)
     .select()
     .single()
-
-  console.log('[SURVEY_SUBMIT] Insert result:', JSON.stringify({ error: error?.message, code: error?.code, hint: error?.hint }))
 
   if (error) {
     return Response.json({
