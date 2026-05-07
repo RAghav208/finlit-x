@@ -1,32 +1,24 @@
-import { createClient } from '@supabase/supabase-js'
-
 const CORRECT_ANSWERS = [2, 0, 1, 2, 1, 2, 2, 3, 1, 2, 1, 1, 2, 2, 1]
 
-// Base URL for Supabase REST API
-function getSupabaseRestUrl() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  if (!url) return null
-  // Convert https://xyz.supabase.co → https://xyz.supabase.co/rest/v1
-  return url.endsWith('/') ? url + 'rest/v1' : url + '/rest/v1'
+function getRestUrl(supabaseUrl) {
+  const base = supabaseUrl.replace(/\/$/, '')
+  return `${base}/rest/v1`
 }
 
 export async function POST(request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  if (!supabaseUrl || !supabaseKey) {
+  if (!supabaseUrl || !supabaseKey || !anonKey) {
     return Response.json({
       error: 'Missing env vars',
       vars: {
         NEXT_PUBLIC_SUPABASE_URL: supabaseUrl || 'MISSING',
-        SUPABASE_SERVICE_ROLE_KEY: supabaseKey ? 'SET' : 'MISSING'
+        SUPABASE_SERVICE_ROLE_KEY: supabaseKey ? 'SET' : 'MISSING',
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: anonKey ? 'SET' : 'MISSING'
       }
     }, { status: 500 })
-  }
-
-  const restUrl = getSupabaseRestUrl()
-  if (!restUrl) {
-    return Response.json({ error: 'Invalid SUPABASE_URL' }, { status: 500 })
   }
 
   let body
@@ -72,31 +64,42 @@ export async function POST(request) {
     study_group: 'experimental',
   }
 
-  // Use native fetch to avoid supabase-js Headers.set issue with JWT chars
+  const restUrl = getRestUrl(supabaseUrl)
+
+  // apikey header with anon key (no +/ chars — safe in Node 18+ Headers)
+  // Authorization: Bearer with service role (supabaseKey) for RLS bypass
   const headers = {
-    'apikey': supabaseKey,
+    'apikey': anonKey,
     'Authorization': `Bearer ${supabaseKey}`,
     'Content-Type': 'application/json',
     'Prefer': 'return=representation'
   }
 
-  const insertRes = await fetch(`${restUrl}/survey_responses`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(insertData)
-  })
-
-  if (!insertRes.ok) {
-    const detail = await insertRes.text()
-    return Response.json({
-      error: 'Failed to save survey response',
-      detail,
-      status: insertRes.status,
-      fetchUrl: `${restUrl}/survey_responses`
-    }, { status: 500 })
+  let insertRes
+  try {
+    insertRes = await fetch(`${restUrl}/survey_responses`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(insertData)
+    })
+  } catch (fetchErr) {
+    return Response.json({ error: 'Network error', detail: fetchErr.message }, { status: 502 })
   }
 
-  const data = await insertRes.json()
+  let data
+  try {
+    data = await insertRes.json()
+  } catch {
+    data = null
+  }
+
+  if (!insertRes.ok) {
+    return Response.json({
+      error: 'Failed to save survey response',
+      detail: data?.message || data?.error_description || JSON.stringify(data),
+      status: insertRes.status
+    }, { status: 500 })
+  }
 
   if (preQuizRaw && Array.isArray(preQuizRaw)) {
     const sectionMap = ['compound', 'compound', 'compound', 'compound', 'credit', 'credit', 'credit', 'credit', 'inflation', 'inflation', 'inflation', 'budget', 'budget', 'risk', 'risk']
