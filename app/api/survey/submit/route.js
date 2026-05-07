@@ -1,21 +1,21 @@
-const CORRECT_ANSWERS = [2, 0, 1, 2, 1, 2, 2, 3, 1, 2, 1, 1, 2, 2, 1]
-
-// GET — diagnostic endpoint: confirms env vars reach the Vercel runtime
 export async function GET() {
-  return Response.json({
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || 'MISSING',
-    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ? 'SET' : 'MISSING',
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'SET' : 'MISSING',
-    deployedAt: new Date().toISOString(),
-  })
+  return Response.json({ ok: true, time: Date.now() })
 }
 
 export async function POST(request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-  if (!supabaseUrl) return Response.json({ error: 'NEXT_PUBLIC_SUPABASE_URL is not set' }, { status: 500 })
-  if (!supabaseKey) return Response.json({ error: 'SUPABASE_SERVICE_ROLE_KEY is not set' }, { status: 500 })
+  if (!supabaseUrl) return Response.json({ error: 'NEXT_PUBLIC_SUPABASE_URL missing' }, { status: 500 })
+  if (!supabaseKey) return Response.json({ error: 'SUPABASE_SERVICE_ROLE_KEY missing' }, { status: 500 })
+
+  const restUrl = supabaseUrl.replace(/\/$/, '') + '/rest/v1'
+  const headers = {
+    'apikey': supabaseKey,
+    'Authorization': `Bearer ${supabaseKey}`,
+    'Content-Type': 'application/json',
+    'Prefer': 'return=representation',
+  }
 
   let body
   try {
@@ -26,11 +26,6 @@ export async function POST(request) {
 
   const { participantCode, demo, preQuizRaw, postQuizRaw, satisfaction, completed } = body
   if (!participantCode) return Response.json({ error: 'Participant code required' }, { status: 400 })
-
-  function computeScore(answers) {
-    if (!answers || !Array.isArray(answers)) return 0
-    return answers.reduce((score, answer, i) => answer === CORRECT_ANSWERS[i] ? score + 1 : score, 0)
-  }
 
   const insertData = {
     participant_code: participantCode,
@@ -43,20 +38,12 @@ export async function POST(request) {
     confidence_before: demo?.confidence ?? null,
     pre_quiz_answers: preQuizRaw,
     post_quiz_answers: postQuizRaw,
-    pre_quiz_score: computeScore(preQuizRaw),
-    post_quiz_score: computeScore(postQuizRaw),
-    score_improvement: computeScore(postQuizRaw) - computeScore(preQuizRaw),
+    pre_quiz_score: 0,
+    post_quiz_score: 0,
+    score_improvement: 0,
     satisfaction_ratings: satisfaction || {},
     completed: completed || false,
     study_group: 'experimental',
-  }
-
-  const restUrl = supabaseUrl.replace(/\/$/, '') + '/rest/v1'
-  const headers = {
-    'apikey': supabaseKey,
-    'Authorization': `Bearer ${supabaseKey}`,
-    'Content-Type': 'application/json',
-    'Prefer': 'return=representation',
   }
 
   const insertRes = await fetch(`${restUrl}/survey_responses`, {
@@ -67,48 +54,12 @@ export async function POST(request) {
 
   const responseText = await insertRes.text()
   if (!insertRes.ok) {
-    let detail
-    try { detail = JSON.parse(responseText) } catch { detail = responseText }
     return Response.json({
       error: 'Failed to save survey response',
       status: insertRes.status,
-      detail,
+      detail: responseText.slice(0, 300),
     }, { status: 500 })
   }
 
-  const data = JSON.parse(responseText)
-
-  const quizSectionMap = ['compound','compound','compound','compound','credit','credit','credit','credit','inflation','inflation','inflation','budget','budget','risk','risk']
-
-  if (preQuizRaw && Array.isArray(preQuizRaw)) {
-    await fetch(`${restUrl}/quiz_answers`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(preQuizRaw.map((answer, i) => ({
-        participant_code: participantCode,
-        quiz_type: 'pre',
-        section: quizSectionMap[i],
-        question_index: i,
-        selected_option: answer,
-        is_correct: answer === CORRECT_ANSWERS[i],
-      }))),
-    })
-  }
-
-  if (postQuizRaw && Array.isArray(postQuizRaw)) {
-    await fetch(`${restUrl}/quiz_answers`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(postQuizRaw.map((answer, i) => ({
-        participant_code: participantCode,
-        quiz_type: 'post',
-        section: quizSectionMap[i],
-        question_index: i,
-        selected_option: answer,
-        is_correct: answer === CORRECT_ANSWERS[i],
-      }))),
-    })
-  }
-
-  return Response.json({ success: true, data })
+  return Response.json({ success: true, data: responseText.slice(0, 100) })
 }
