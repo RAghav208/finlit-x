@@ -66,8 +66,6 @@ export async function POST(request) {
 
   const restUrl = getRestUrl(supabaseUrl)
 
-  // apikey header with anon key (no +/ chars — safe in Node 18+ Headers)
-  // Authorization: Bearer with service role (supabaseKey) for RLS bypass
   const headers = {
     'apikey': anonKey,
     'Authorization': `Bearer ${supabaseKey}`,
