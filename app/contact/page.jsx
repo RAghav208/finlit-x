@@ -20,7 +20,22 @@ function Reveal({ children, delay = 0 }) {
 export default function ContactPage() {
   const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' })
   const [sent, setSent] = useState(false)
-  const handleSubmit = (e) => { e.preventDefault(); setSent(true) }
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setIsLoading(true)
+    setError(null)
+    try {
+      // Contact form submission — in production, this would POST to an API endpoint
+      await new Promise(resolve => setTimeout(resolve, 800)) // Simulate network request
+      setSent(true)
+    } catch (err) {
+      setError('Failed to send message. Please try again or email us directly at finlitx.jainuniversity@gmail.com')
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   return (
     <main>
@@ -59,8 +74,13 @@ export default function ContactPage() {
                   <label className="form-label">Message</label>
                   <textarea className="form-textarea" placeholder="Tell us what's on your mind..." required value={form.message} onChange={e => setForm({ ...form, message: e.target.value })} />
                 </div>
-                <motion.button type="submit" className="btn-primary" style={{ width: '100%', justifyContent: 'center' }} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                  Send Message <ArrowRight size={18} />
+                {error && (
+                  <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: '0.85rem', color: '#991b1b' }}>
+                    {error}
+                  </motion.div>
+                )}
+                <motion.button type="submit" className="btn-primary" style={{ width: '100%', justifyContent: 'center', opacity: isLoading ? 0.7 : 1 }} whileHover={isLoading ? {} : { scale: 1.02 }} whileTap={isLoading ? {} : { scale: 0.98 }} disabled={isLoading}>
+                  {isLoading ? 'Sending...' : 'Send Message'} <ArrowRight size={18} />
                 </motion.button>
               </form>
             )}

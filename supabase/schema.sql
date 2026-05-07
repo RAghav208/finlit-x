@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS survey_responses (
   -- Meta
   completed BOOLEAN DEFAULT FALSE,
   time_taken_seconds INTEGER,
+  qualitative_feedback TEXT,
   device_info TEXT,
   study_group TEXT DEFAULT 'experimental' -- 'experimental' or 'control'
 );

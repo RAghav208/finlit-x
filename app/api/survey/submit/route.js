@@ -1,5 +1,3 @@
-import { createClient } from '@supabase/supabase-js'
-
 const CORRECT_ANSWERS = [2, 0, 1, 2, 1, 2, 2, 3, 1, 2, 1, 1, 2, 2, 1]
 
 export async function POST(request) {
@@ -16,7 +14,7 @@ export async function POST(request) {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { participantCode, demo, preQuizRaw, postQuizRaw, satisfaction, completed } = body
+  const { participantCode, demo, preQuizRaw, postQuizRaw, satisfaction, completed, studyGroup, timeTakenSeconds, moduleInteractions, qualitativeFeedback } = body
   if (!participantCode) return Response.json({ error: 'Participant code required' }, { status: 400 })
 
   function computeScore(answers) {
@@ -40,7 +38,9 @@ export async function POST(request) {
     score_improvement: computeScore(postQuizRaw) - computeScore(preQuizRaw),
     satisfaction_ratings: satisfaction || {},
     completed: completed || false,
-    study_group: 'experimental',
+    study_group: studyGroup || 'experimental',
+    time_taken_seconds: timeTakenSeconds || null,
+    qualitative_feedback: qualitativeFeedback || null,
   }
 
   const restUrl = supabaseUrl.replace(/\/$/, '') + '/rest/v1'
@@ -53,7 +53,10 @@ export async function POST(request) {
 
   const insertRes = await fetch(`${restUrl}/survey_responses`, {
     method: 'POST',
-    headers,
+    headers: {
+      ...headers,
+      'Prefer': 'resolution=merge-duplicates',
+    },
     body: JSON.stringify(insertData),
   })
 
@@ -92,6 +95,21 @@ export async function POST(request) {
         question_index: i,
         selected_option: answer,
         is_correct: answer === CORRECT_ANSWERS[i],
+      }))),
+    })
+  }
+
+  if (moduleInteractions && Array.isArray(moduleInteractions)) {
+    await fetch(`${restUrl}/module_interactions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(moduleInteractions.map(interaction => ({
+        participant_code: participantCode,
+        module_id: interaction.moduleId,
+        module_type: interaction.moduleType,
+        time_spent_seconds: interaction.timeSpentSeconds,
+        completed: interaction.completed,
+        interaction_data: interaction.interactionData || null,
       }))),
     })
   }

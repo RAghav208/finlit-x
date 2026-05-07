@@ -353,7 +353,7 @@ function StepSidebar({ currentStep, onStepClick }) {
 // ============================================================
 // INFO STEP
 // ============================================================
-function InfoStep({ onNext }) {
+function InfoStep({ onNext, studyGroup }) {
   return (
     <div style={{ flex: 1, maxWidth: 680 }}>
       <motion.div
@@ -385,7 +385,31 @@ function InfoStep({ onNext }) {
               Welcome to the FinLit-X Research Study
             </h2>
           </div>
+          {studyGroup === 'control' && (
+            <div style={{
+              marginLeft: 'auto',
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: '#ede9fe', border: '1px solid #c4b5fd',
+              borderRadius: 100, padding: '6px 14px',
+              fontSize: '0.78rem', fontWeight: 700, color: '#6d28d9'
+            }}>
+              Control Group
+            </div>
+          )}
         </div>
+
+        {studyGroup === 'control' && (
+          <div style={{
+            background: '#ede9fe', border: '1px solid #c4b5fd',
+            borderRadius: 12, padding: '16px 18px', marginBottom: 24,
+            display: 'flex', gap: 12, alignItems: 'flex-start'
+          }}>
+            <div style={{ fontSize: '1.2rem', flexShrink: 0 }}>ℹ️</div>
+            <div style={{ fontSize: '0.88rem', color: '#4c1d95', lineHeight: 1.6 }}>
+              <strong>Control Group:</strong> You will take the pre-quiz and post-quiz with a short delay between them — no animated modules in between. This helps us measure the effectiveness of the FinLit-X learning platform against a baseline.
+            </div>
+          </div>
+        )}
 
         {/* Time + privacy badges */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 24 }}>
@@ -415,13 +439,18 @@ function InfoStep({ onNext }) {
           </div>
         </div>
 
-        <div style={{ borderLeft: '3px solid var(--primary)', paddingLeft: 16, marginBottom: 28 }}>
-          <div style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: 8, lineHeight: 1.5 }}>
-            "Evaluating the Impact of AI-Driven Animated Financial Literacy Modules on Indian College Students"
+        <div style={{ background: 'rgba(21,128,61,0.06)', border: '1px solid rgba(21,128,61,0.12)', borderRadius: 14, padding: '20px 24px', marginBottom: 28, display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+          <div style={{ width: 40, height: 40, background: 'var(--primary)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>
+            <ClipboardList size={18} color="white" />
           </div>
-          <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-            This study is conducted by students at <strong>JAIN (Deemed-to-be University), Bengaluru</strong>, under the mentorship of <strong>Prof. Haripriya V</strong>, as part of the MCA AIML Semester 2 FinLit-X project.
-          </p>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: 8, lineHeight: 1.5 }}>
+              "Evaluating the Impact of AI-Driven Animated Financial Literacy Modules on Indian College Students"
+            </div>
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+              This study is conducted by students at <strong>JAIN (Deemed-to-be University), Bengaluru</strong>, under the mentorship of <strong>Prof. Haripriya V</strong>, as part of the MCA AIML Semester 2 FinLit-X project.
+            </p>
+          </div>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 28 }}>
@@ -1474,12 +1503,13 @@ const MODULE_CONFIGS = {
   },
 }
 
-function ModuleStep({ moduleId, onNext }) {
+function ModuleStep({ moduleId, onNext, onComplete }) {
   const cfg = MODULE_CONFIGS[moduleId]
   const [phase, setPhase] = useState(0) // 0=intro, 1=sandbox, 2=prediction, 3=check
   const [predAnswer, setPredAnswer] = useState('')
   const [checkAnswer, setCheckAnswer] = useState(null)
   const [checkFeedback, setCheckFeedback] = useState(null)
+  const [startTime] = useState(Date.now())
 
   // Sandbox state per module
   const sandboxStates = {
@@ -2342,7 +2372,18 @@ function ModuleStep({ moduleId, onNext }) {
 
               {checkFeedback === 'correct' && (
                 <motion.button
-                  onClick={onNext}
+                  onClick={() => {
+                    if (onComplete) {
+                      onComplete({
+                        moduleId,
+                        moduleType: cfg.title,
+                        timeSpentSeconds: Math.round((Date.now() - startTime) / 1000),
+                        completed: true,
+                        interactionData: { sandboxVal, phasesCompleted: phase + 1 },
+                      })
+                    }
+                    onNext()
+                  }}
                   className="btn-primary"
                   style={{ width: '100%', justifyContent: 'center', padding: '14px' }}
                   whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}
@@ -2473,14 +2514,42 @@ function SatisfactionStep({ data, onChange, onNext }) {
 
         <div style={{ display: 'flex', gap: 12, marginTop: 32 }}>
           <motion.button
-            onClick={onNext}
-            disabled={!allAnswered}
+            onClick={async () => {
+              if (!allAnswered) return
+              setIsSubmitting(true)
+              const timeTakenSeconds = Math.round((Date.now() - startTime) / 1000)
+              try {
+                await fetch('/api/survey/submit', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    participantCode,
+                    demo: data.demo,
+                    preQuizRaw: data.preQuiz,
+                    postQuizRaw: data.postQuiz,
+                    satisfaction: data.sat,
+                    completed: true,
+                    studyGroup,
+                    timeTakenSeconds,
+                    moduleInteractions: data.moduleInteractions,
+                    qualitativeFeedback: data.sat.open1 ? [data.sat.open1, data.sat.open2].filter(Boolean).join('\n---\n') : null,
+                  }),
+                })
+                setStep('complete')
+                window.scrollTo({ top: 0, behavior: 'smooth' })
+              } catch (err) {
+                console.error('Failed to submit survey:', err)
+              } finally {
+                setIsSubmitting(false)
+              }
+            }}
+            disabled={!allAnswered || isSubmitting}
             className="btn-primary"
-            style={{ flex: 1, justifyContent: 'center', opacity: allAnswered ? 1 : 0.45 }}
-            whileHover={allAnswered ? { scale: 1.01 } : {}}
-            whileTap={allAnswered ? { scale: 0.99 } : {}}
+            style={{ flex: 1, justifyContent: 'center', opacity: allAnswered && !isSubmitting ? 1 : 0.45 }}
+            whileHover={allAnswered && !isSubmitting ? { scale: 1.01 } : {}}
+            whileTap={allAnswered && !isSubmitting ? { scale: 0.99 } : {}}
           >
-            Complete Study <CheckCircle2 size={18} />
+            {isSubmitting ? <><Clock size={18} style={{ animation: 'spin 1s linear infinite' }} /> Saving... </> : <>Complete Study <CheckCircle2 size={18} /></>}
           </motion.button>
         </div>
       </motion.div>
@@ -2491,11 +2560,10 @@ function SatisfactionStep({ data, onChange, onNext }) {
 // ============================================================
 // COMPLETE STEP
 // ============================================================
-function CompleteStep({ data, onSubmit, isSubmitting }) {
+function CompleteStep({ data, isSubmitting }) {
   const preScore = data.preQuiz.filter((a, i) => a === CORRECT[i]).length
   const postScore = data.postQuiz.filter((a, i) => a === CORRECT[i]).length
   const participantCode = data.participantCode
-
   const handlePrint = () => window.print()
 
   return (
@@ -2588,26 +2656,6 @@ function CompleteStep({ data, onSubmit, isSubmitting }) {
           </p>
         </div>
 
-        {/* Submit to Supabase */}
-        <motion.button
-          onClick={onSubmit}
-          disabled={isSubmitting}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            background: isSubmitting ? 'var(--bg)' : 'var(--primary)',
-            border: '1px solid var(--primary)',
-            color: isSubmitting ? 'var(--text-muted)' : 'white',
-            padding: '10px 24px', borderRadius: 10,
-            cursor: isSubmitting ? 'wait' : 'pointer',
-            fontFamily: 'var(--font)', fontSize: '0.85rem', fontWeight: 600,
-            marginBottom: 12,
-          }}
-          whileHover={{ scale: isSubmitting ? 1 : 1.03 }}
-        >
-          {isSubmitting ? <Clock size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Shield size={14} />}
-          {isSubmitting ? 'Saving...' : 'Save My Responses Securely'}
-        </motion.button>
-
         <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
           Questions? Email: <strong>finlitx.jainuniversity@gmail.com</strong><br />
           Study by JAIN University MCA AIML students · Mentor: Prof. Haripriya V
@@ -2624,15 +2672,40 @@ export default function SurveyFlow() {
   const [step, setStep] = useState('info')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // RCT: detect group from URL param — client-side only (window not available in SSR)
+  const [studyGroup, setStudyGroup] = useState('experimental')
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('group') === 'control') setStudyGroup('control')
+  }, [])
+
   const [data, setData] = useState({
     participantCode: generateCode(),
     demo: { age: '', gender: null, program: '', year: null, allowance: null, priorApp: null, confidence: null },
     preQuiz: Array(ALL_QUIZ_QUESTIONS.length).fill(null),
     postQuiz: Array(ALL_QUIZ_QUESTIONS.length).fill(null),
     sat: {},
+    moduleInteractions: [],
+    startTime: Date.now(),
   })
 
-  const stepOrder = ['info', 'consent', 'demo', 'prequiz', 'modulesOverview', 'module1', 'module2', 'module3', 'module4', 'module5', 'postquiz', 'satisfaction', 'complete']
+  // Create session record on survey start (for dropout tracking)
+  useEffect(() => {
+    fetch('/api/survey/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        participantCode: data.participantCode,
+        studyGroup,
+        deviceInfo: navigator.userAgent,
+      }),
+    }).catch(() => {}) // fire and forget
+  }, [])
+
+  const stepOrderExperimental = ['info', 'consent', 'demo', 'prequiz', 'modulesOverview', 'module1', 'module2', 'module3', 'module4', 'module5', 'postquiz', 'satisfaction', 'complete']
+  const stepOrderControl = ['info', 'consent', 'demo', 'prequiz', 'controlPostQuiz', 'satisfaction', 'complete']
+
+  const stepOrder = studyGroup === 'control' ? stepOrderControl : stepOrderExperimental
   const currentIdx = stepOrder.indexOf(step)
 
   const navigate = (direction) => {
@@ -2651,6 +2724,7 @@ export default function SurveyFlow() {
   const handleSubmit = async () => {
     if (isSubmitting) return
     setIsSubmitting(true)
+    const timeTakenSeconds = Math.round((Date.now() - data.startTime) / 1000)
     try {
       await fetch('/api/survey/submit', {
         method: 'POST',
@@ -2662,6 +2736,10 @@ export default function SurveyFlow() {
           postQuizRaw: data.postQuiz,
           satisfaction: data.sat,
           completed: true,
+          studyGroup,
+          timeTakenSeconds,
+          moduleInteractions: data.moduleInteractions,
+          qualitativeFeedback: data.sat.open1 ? [data.sat.open1, data.sat.open2].filter(Boolean).join('\n---\n') : null,
         }),
       })
     } catch (err) {
@@ -2687,7 +2765,7 @@ export default function SurveyFlow() {
               exit={{ opacity: 0, y: -12 }}
               transition={{ duration: 0.25 }}
             >
-              {step === 'info' && <InfoStep onNext={() => navigate('next')} />}
+              {step === 'info' && <InfoStep onNext={() => navigate('next')} studyGroup={studyGroup} />}
               {step === 'consent' && <ConsentStep onNext={() => navigate('next')} />}
               {step === 'demo' && <DemoStep data={data.demo} onChange={d => setData(p => ({ ...p, demo: d }))} onNext={() => navigate('next')} />}
               {step === 'prequiz' && (
@@ -2700,11 +2778,21 @@ export default function SurveyFlow() {
                 />
               )}
               {step === 'modulesOverview' && <ModulesOverviewStep onNext={() => navigate('next')} />}
-              {step === 'module1' && <ModuleStep moduleId="module1" onNext={() => navigate('next')} />}
-              {step === 'module2' && <ModuleStep moduleId="module2" onNext={() => navigate('next')} />}
-              {step === 'module3' && <ModuleStep moduleId="module3" onNext={() => navigate('next')} />}
-              {step === 'module4' && <ModuleStep moduleId="module4" onNext={() => navigate('next')} />}
-              {step === 'module5' && <ModuleStep moduleId="module5" onNext={() => navigate('next')} />}
+              {step === 'module1' && <ModuleStep moduleId="module1" onNext={() => navigate('next')} onComplete={(interaction) => setData(p => ({ ...p, moduleInteractions: [...p.moduleInteractions, interaction] }))} />}
+              {step === 'module2' && <ModuleStep moduleId="module2" onNext={() => navigate('next')} onComplete={(interaction) => setData(p => ({ ...p, moduleInteractions: [...p.moduleInteractions, interaction] }))} />}
+              {step === 'module3' && <ModuleStep moduleId="module3" onNext={() => navigate('next')} onComplete={(interaction) => setData(p => ({ ...p, moduleInteractions: [...p.moduleInteractions, interaction] }))} />}
+              {step === 'module4' && <ModuleStep moduleId="module4" onNext={() => navigate('next')} onComplete={(interaction) => setData(p => ({ ...p, moduleInteractions: [...p.moduleInteractions, interaction] }))} />}
+              {step === 'module5' && <ModuleStep moduleId="module5" onNext={() => navigate('next')} onComplete={(interaction) => setData(p => ({ ...p, moduleInteractions: [...p.moduleInteractions, interaction] }))} />}
+              {step === 'controlPostQuiz' && (
+                <QuizStep
+                  title="Post-Quiz"
+                  subtitle="Step 5 of 7 (Control Group)"
+                  answers={data.postQuiz}
+                  onAnswer={(i, v) => setData(p => { const u = [...p.postQuiz]; u[i] = v; return { ...p, postQuiz: u } })}
+                  onNext={() => navigate('next')}
+                  preQuizScore={preScore}
+                />
+              )}
               {step === 'postquiz' && (
                 <QuizStep
                   title="Post-Quiz"
@@ -2716,7 +2804,7 @@ export default function SurveyFlow() {
                 />
               )}
               {step === 'satisfaction' && <SatisfactionStep data={data.sat} onChange={s => setData(p => ({ ...p, sat: s }))} onNext={() => navigate('next')} />}
-              {step === 'complete' && <CompleteStep data={data} onSubmit={handleSubmit} isSubmitting={isSubmitting} />}
+              {step === 'complete' && <CompleteStep data={data} isSubmitting={isSubmitting} />}
             </motion.div>
           </AnimatePresence>
         </div>
