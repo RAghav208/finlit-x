@@ -114,7 +114,7 @@ export default function HomePage() {
         </Reveal>
         <motion.div className="disciplines-grid" variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, margin: '-60px' }}>
           {disciplines.map((d, i) => (
-            <motion.div key={d.name} className="discipline-card" variants={fadeUp} custom={i}>
+            <motion.div key={d.name} className="discipline-card" variants={fadeUp} custom={i} whileHover={{ y: -6, scale: 1.01 }} whileTap={{ scale: 0.98 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
               <div className="discipline-icon"><d.icon size={26} /></div>
               <div className="discipline-name">{d.name}</div>
               <div className="discipline-lead">{d.lead}</div>
@@ -146,7 +146,7 @@ export default function HomePage() {
         <div className="team-grid">
           {team.map((m, i) => (
             <Reveal key={m.name} delay={i * 0.07}>
-              <motion.div className="team-card" whileHover={{ y: -4, boxShadow: '0 8px 40px rgba(21,128,61,0.12)' }} transition={{ duration: 0.2 }}>
+              <motion.div className="team-card" whileHover={{ y: -6, scale: 1.01 }} whileTap={{ scale: 0.99 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
                 <div className="team-avatar">{m.initials}</div>
                 <div className="team-name">{m.name}</div>
                 <div className="team-role">{m.role}</div>
