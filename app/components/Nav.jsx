@@ -25,6 +25,7 @@ export default function Nav() {
     { href: '/research', label: 'Research' },
     { href: '/team', label: 'Team' },
     { href: '/contact', label: 'Contact' },
+    { href: '/help', label: 'Help' },
   ]
 
   return (
@@ -74,6 +75,9 @@ export default function Nav() {
                 {l.label}
               </Link>
             ))}
+            <Link href="/help" className={pathname === '/help' ? 'active' : ''} onClick={() => setMenuOpen(false)}>
+              Help
+            </Link>
             <Link href="/survey" onClick={() => setMenuOpen(false)}>
               <ClipboardList size={16} style={{ marginRight: 8 }} />
               Take Survey

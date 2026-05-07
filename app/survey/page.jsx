@@ -2536,6 +2536,9 @@ function SatisfactionStep({ data, onChange, onNext }) {
                   }),
                 })
                 setStep('complete')
+                if (typeof window !== 'undefined') {
+                  try { localStorage.removeItem(STORAGE_KEY) } catch {}
+                }
                 window.scrollTo({ top: 0, behavior: 'smooth' })
               } catch (err) {
                 console.error('Failed to submit survey:', err)
@@ -2668,6 +2671,8 @@ function CompleteStep({ data, isSubmitting }) {
 // ============================================================
 // SURVEY FLOW
 // ============================================================
+const STORAGE_KEY = 'finlitx_survey_v1'
+
 export default function SurveyFlow() {
   const [step, setStep] = useState('info')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -2679,15 +2684,64 @@ export default function SurveyFlow() {
     if (params.get('group') === 'control') setStudyGroup('control')
   }, [])
 
-  const [data, setData] = useState({
-    participantCode: generateCode(),
-    demo: { age: '', gender: null, program: '', year: null, allowance: null, priorApp: null, confidence: null },
-    preQuiz: Array(ALL_QUIZ_QUESTIONS.length).fill(null),
-    postQuiz: Array(ALL_QUIZ_QUESTIONS.length).fill(null),
-    sat: {},
-    moduleInteractions: [],
-    startTime: Date.now(),
+  const [data, setData] = useState(() => {
+    // Restore from localStorage on first render (browser only)
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY)
+        if (saved) {
+          const parsed = JSON.parse(saved)
+          if (parsed.step && parsed.data && parsed.participantCode) {
+            return { ...parsed.data, participantCode: parsed.participantCode }
+          }
+        }
+      } catch {
+        // Corrupted data — start fresh
+      }
+    }
+    return {
+      participantCode: generateCode(),
+      demo: { age: '', gender: null, program: '', year: null, allowance: null, priorApp: null, confidence: null },
+      preQuiz: Array(ALL_QUIZ_QUESTIONS.length).fill(null),
+      postQuiz: Array(ALL_QUIZ_QUESTIONS.length).fill(null),
+      sat: {},
+      moduleInteractions: [],
+      startTime: Date.now(),
+    }
   })
+
+  // Restore step from localStorage separately (can't mix with useState init that depends on window)
+  const [restoredStep, setRestoredStep] = useState(null)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY)
+        if (saved) {
+          const parsed = JSON.parse(saved)
+          if (parsed.step) setRestoredStep(parsed.step)
+        }
+      } catch {}
+    }
+  }, [])
+
+  // Apply restored step once
+  useEffect(() => {
+    if (restoredStep) {
+      setStep(restoredStep)
+      setRestoredStep(null) // only apply once
+    }
+  }, [restoredStep])
+
+  // Persist to localStorage on every data/step change
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ step, data, participantCode: data.participantCode }))
+      } catch {
+        // Storage full or unavailable — silently skip
+      }
+    }
+  }, [step, data])
 
   // Create session record on survey start (for dropout tracking)
   useEffect(() => {

@@ -26,10 +26,10 @@ const disciplines = [
 ]
 
 const stats = [
-  { value: 'Pending', label: 'ML Model Accuracy', sub: 'To be measured post-study' },
-  { value: 'Pending', label: 'Quiz Score Improvement', sub: 'To be measured post-study' },
-  { value: 'Pending', label: 'User Satisfaction', sub: 'To be measured post-study' },
-  { value: 'Pending', label: 'Module Completion', sub: 'To be measured post-study' },
+  { value: 'Apr–May', label: 'Pilot Study', sub: 'JAIN University' },
+  { value: '15 Qs', label: 'Pre & Post Quiz', sub: 'Across 5 topics' },
+  { value: '50+', label: 'Target Participants', sub: 'MCA AIML students' },
+  { value: '5', label: 'Animated Modules', sub: 'ML-driven personalization' },
 ]
 
 const team = [
