@@ -53,10 +53,10 @@ export async function POST(request) {
   }
 
   // Native fetch against Supabase REST API — no supabase-js, no JWT Header issues.
-  // apikey header with service role JWT grants bypass-RLS access.
-  // The apikey header alone is sufficient for server-side operations.
+  // The service role JWT in the apikey header bypasses RLS for server-side inserts.
   const headers = {
     'apikey': supabaseKey,
+    'Authorization': `Bearer ${supabaseKey}`,
     'Content-Type': 'application/json',
     'Prefer': 'return=representation',
   }
