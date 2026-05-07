@@ -91,7 +91,8 @@ export async function POST(request) {
     return Response.json({
       error: 'Failed to save survey response',
       detail,
-      status: insertRes.status
+      status: insertRes.status,
+      fetchUrl: `${restUrl}/survey_responses`
     }, { status: 500 })
   }
 
