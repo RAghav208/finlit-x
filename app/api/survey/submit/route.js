@@ -53,10 +53,10 @@ export async function POST(request) {
   }
 
   // Native fetch against Supabase REST API — no supabase-js, no JWT Header issues.
-  // The apikey header with the service role JWT grants bypass-RLS access.
+  // apikey header with service role JWT grants bypass-RLS access.
+  // The apikey header alone is sufficient for server-side operations.
   const headers = {
     'apikey': supabaseKey,
-    'Authorization': `Bearer ${supabaseKey}`,
     'Content-Type': 'application/json',
     'Prefer': 'return=representation',
   }
@@ -67,17 +67,23 @@ export async function POST(request) {
     body: JSON.stringify(insertData),
   })
 
+  const responseText = await insertRes.text()
   if (!insertRes.ok) {
     let detail
-    try { detail = await insertRes.json() } catch { detail = await insertRes.text() }
+    try { detail = JSON.parse(responseText) } catch { detail = responseText }
     return Response.json({
       error: 'Failed to save survey response',
-      detail: detail?.message || detail?.error_description || JSON.stringify(detail),
-      status: insertRes.status,
+      debug: {
+        restUrl,
+        serviceRoleKeyPrefix: supabaseKey ? supabaseKey.slice(0, 20) + '...' : 'MISSING',
+        status: insertRes.status,
+        responsePreview: responseText.slice(0, 200)
+      },
+      detail,
     }, { status: 500 })
   }
 
-  const data = await insertRes.json()
+  const data = JSON.parse(responseText)
 
   const quizSectionMap = ['compound','compound','compound','compound','credit','credit','credit','credit','inflation','inflation','inflation','budget','budget','risk','risk']
 
