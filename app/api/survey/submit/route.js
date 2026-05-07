@@ -1,10 +1,6 @@
-export async function GET() {
-  return Response.json({
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || 'MISSING',
-    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ? 'SET' : 'MISSING',
-    NODE_VERSION: process.version,
-  })
-}
+import { createClient } from '@supabase/supabase-js'
+
+const CORRECT_ANSWERS = [2, 0, 1, 2, 1, 2, 2, 3, 1, 2, 1, 1, 2, 2, 1]
 
 export async function POST(request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -12,8 +8,6 @@ export async function POST(request) {
 
   if (!supabaseUrl) return Response.json({ error: 'NEXT_PUBLIC_SUPABASE_URL missing' }, { status: 500 })
   if (!supabaseKey) return Response.json({ error: 'SUPABASE_SERVICE_ROLE_KEY missing' }, { status: 500 })
-
-  const restUrl = supabaseUrl.replace(/\/$/, '') + '/rest/v1'
 
   let body
   try {
@@ -24,6 +18,11 @@ export async function POST(request) {
 
   const { participantCode, demo, preQuizRaw, postQuizRaw, satisfaction, completed } = body
   if (!participantCode) return Response.json({ error: 'Participant code required' }, { status: 400 })
+
+  function computeScore(answers) {
+    if (!answers || !Array.isArray(answers)) return 0
+    return answers.reduce((score, answer, i) => answer === CORRECT_ANSWERS[i] ? score + 1 : score, 0)
+  }
 
   const insertData = {
     participant_code: participantCode,
@@ -36,53 +35,66 @@ export async function POST(request) {
     confidence_before: demo?.confidence ?? null,
     pre_quiz_answers: preQuizRaw,
     post_quiz_answers: postQuizRaw,
-    pre_quiz_score: 0,
-    post_quiz_score: 0,
-    score_improvement: 0,
+    pre_quiz_score: computeScore(preQuizRaw),
+    post_quiz_score: computeScore(postQuizRaw),
+    score_improvement: computeScore(postQuizRaw) - computeScore(preQuizRaw),
     satisfaction_ratings: satisfaction || {},
     completed: completed || false,
     study_group: 'experimental',
   }
 
-  // Test 1: Service role key in apikey + Authorization headers
-  const test1 = await fetch(`${restUrl}/survey_responses`, {
-    method: 'POST',
-    headers: {
-      'apikey': supabaseKey,
-      'Authorization': `Bearer ${supabaseKey}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'return=representation',
-    },
-    body: JSON.stringify(insertData),
-  })
-
-  // Test 2: Anon key in apikey, service role in Authorization
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-  const test2 = anonKey ? await fetch(`${restUrl}/survey_responses`, {
-    method: 'POST',
-    headers: {
-      'apikey': anonKey,
-      'Authorization': `Bearer ${supabaseKey}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'return=representation',
-    },
-    body: JSON.stringify(insertData),
-  }) : null
-
-  const text1 = await test1.text()
-  const result1 = { status: test1.status, ok: test1.ok, preview: text1.slice(0, 200) }
-
-  let result2 = null
-  if (test2) {
-    const text2 = await test2.text()
-    result2 = { status: test2.status, ok: test2.ok, preview: text2.slice(0, 200) }
+  const restUrl = supabaseUrl.replace(/\/$/, '') + '/rest/v1'
+  const headers = {
+    'apikey': supabaseKey,
+    'Authorization': `Bearer ${supabaseKey}`,
+    'Content-Type': 'application/json',
+    'Prefer': 'return=representation',
   }
 
-  return Response.json({
-    restUrl: restUrl.slice(0, 50) + '...',
-    keyPrefix: supabaseKey.slice(0, 20) + '...',
-    test1: result1,
-    test2: result2,
-    usedAnonKey: !!anonKey,
+  const insertRes = await fetch(`${restUrl}/survey_responses`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(insertData),
   })
+
+  const responseText = await insertRes.text()
+  if (!insertRes.ok) {
+    return Response.json({ error: 'Failed to save survey response', status: insertRes.status, detail: responseText.slice(0, 300) }, { status: 500 })
+  }
+
+  const data = JSON.parse(responseText)
+
+  const quizSectionMap = ['compound','compound','compound','compound','credit','credit','credit','credit','inflation','inflation','inflation','budget','budget','risk','risk']
+
+  if (preQuizRaw && Array.isArray(preQuizRaw)) {
+    await fetch(`${restUrl}/quiz_answers`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(preQuizRaw.map((answer, i) => ({
+        participant_code: participantCode,
+        quiz_type: 'pre',
+        section: quizSectionMap[i],
+        question_index: i,
+        selected_option: answer,
+        is_correct: answer === CORRECT_ANSWERS[i],
+      }))),
+    })
+  }
+
+  if (postQuizRaw && Array.isArray(postQuizRaw)) {
+    await fetch(`${restUrl}/quiz_answers`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(postQuizRaw.map((answer, i) => ({
+        participant_code: participantCode,
+        quiz_type: 'post',
+        section: quizSectionMap[i],
+        question_index: i,
+        selected_option: answer,
+        is_correct: answer === CORRECT_ANSWERS[i],
+      }))),
+    })
+  }
+
+  return Response.json({ success: true, data })
 }
