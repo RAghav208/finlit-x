@@ -74,8 +74,8 @@ export async function POST(request) {
       .single()
 
     if (error) {
-      console.error('Supabase insert error:', error)
-      return Response.json({ error: 'Failed to save survey response' }, { status: 500 })
+      console.error('Supabase insert error:', JSON.stringify(error))
+      return Response.json({ error: 'Failed to save survey response', detail: error.message }, { status: 500 })
     }
 
     if (preQuizRaw && Array.isArray(preQuizRaw)) {
